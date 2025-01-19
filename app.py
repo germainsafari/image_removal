@@ -1,12 +1,11 @@
 import os
 from flask import Flask, request, render_template, send_file, jsonify
-from rembg import remove, new_session
 from PIL import Image
 import io
-import numpy as np
-from werkzeug.utils import secure_filename
+import requests
 import logging
 from datetime import datetime
+from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
 
@@ -19,9 +18,8 @@ UPLOAD_FOLDER = 'uploads'
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg'}
 DEFAULT_BACKGROUND = 'static/default_background.png'
 OUTPUT_FOLDER = 'outputs'
-
-# Initialize rembg session with enhanced settings
-session = new_session(model_name="u2net_human_seg")
+REMOVE_BG_API_KEY = 'EX1r2czGVzxP8vqGti8bzjZS'
+REMOVE_BG_API_URL = 'https://api.remove.bg/v1.0/removebg'
 
 # Ensure required directories exist
 for folder in [UPLOAD_FOLDER, OUTPUT_FOLDER, 'static']:
@@ -34,9 +32,41 @@ def allowed_file(filename):
     """Check if the file extension is allowed."""
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
+def remove_background_api(image_path):
+    """
+    Remove background using remove.bg API
+    
+    Args:
+        image_path (str): Path to input image
+        
+    Returns:
+        bytes: Processed image data with transparent background
+    """
+    headers = {
+        'X-Api-Key': REMOVE_BG_API_KEY,
+    }
+
+    with open(image_path, 'rb') as image_file:
+        files = {
+            'image_file': image_file,
+            'size': 'auto',
+            'format': 'png',
+        }
+        
+        response = requests.post(
+            REMOVE_BG_API_URL,
+            headers=headers,
+            files=files
+        )
+        
+        if response.status_code == requests.codes.ok:
+            return response.content
+        else:
+            raise Exception(f"Remove.bg API error: {response.status_code} - {response.text}")
+
 def process_image(input_path, background_path):
     """
-    Process the input image with enhanced background removal and compositing.
+    Process the input image using remove.bg API and compose with background.
     
     Args:
         input_path (str): Path to input portrait image
@@ -46,20 +76,9 @@ def process_image(input_path, background_path):
         str: Path to processed output image
     """
     try:
-        # Read input image and remove background with enhanced settings
-        with open(input_path, 'rb') as input_file:
-            input_data = input_file.read()
-            
-            # Enhanced removal with alpha matting
-            output_data = remove(
-                input_data,
-                session=session,
-                alpha_matting=True,
-                alpha_matting_foreground_threshold=240,
-                alpha_matting_background_threshold=10,
-                alpha_matting_erode_size=10
-            )
-            foreground = Image.open(io.BytesIO(output_data)).convert('RGBA')
+        # Remove background using remove.bg API
+        removed_bg_data = remove_background_api(input_path)
+        foreground = Image.open(io.BytesIO(removed_bg_data)).convert('RGBA')
 
         # Load and resize background to match foreground dimensions
         background = Image.open(background_path).convert('RGBA')
@@ -114,17 +133,20 @@ def upload_file():
         input_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         file.save(input_path)
 
-        # Process image
-        output_filename = process_image(input_path, DEFAULT_BACKGROUND)
+        try:
+            # Process image
+            output_filename = process_image(input_path, DEFAULT_BACKGROUND)
+            
+            return jsonify({
+                'success': True, 
+                'output_path': f'static/{output_filename}',
+                'download_path': f'download/{output_filename}'
+            })
 
-        # Clean up input file
-        os.remove(input_path)
-
-        return jsonify({
-            'success': True, 
-            'output_path': f'static/{output_filename}',
-            'download_path': f'download/{output_filename}'
-        })
+        finally:
+            # Clean up input file
+            if os.path.exists(input_path):
+                os.remove(input_path)
 
     except Exception as e:
         logger.error(f"Upload error: {str(e)}")
