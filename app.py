@@ -1,6 +1,6 @@
 import os
 from flask import Flask, request, render_template, send_file, jsonify
-from rembg import remove
+from rembg import remove, new_session
 from PIL import Image
 import io
 import numpy as np
@@ -17,11 +17,14 @@ logger = logging.getLogger(__name__)
 # Configuration
 UPLOAD_FOLDER = 'uploads'
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg'}
-DEFAULT_BACKGROUND = 'static/default_background.jpg'
+DEFAULT_BACKGROUND = 'static/default_background.png'
 OUTPUT_FOLDER = 'outputs'
 
+# Initialize rembg session with enhanced settings
+session = new_session(model_name="u2net_human_seg")
+
 # Ensure required directories exist
-for folder in [UPLOAD_FOLDER, OUTPUT_FOLDER]:
+for folder in [UPLOAD_FOLDER, OUTPUT_FOLDER, 'static']:
     os.makedirs(folder, exist_ok=True)
 
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
@@ -33,7 +36,7 @@ def allowed_file(filename):
 
 def process_image(input_path, background_path):
     """
-    Process the input image by removing background and compositing with new background.
+    Process the input image with enhanced background removal and compositing.
     
     Args:
         input_path (str): Path to input portrait image
@@ -43,25 +46,45 @@ def process_image(input_path, background_path):
         str: Path to processed output image
     """
     try:
-        # Read input image and remove background
+        # Read input image and remove background with enhanced settings
         with open(input_path, 'rb') as input_file:
             input_data = input_file.read()
-            output_data = remove(input_data)
+            
+            # Enhanced removal with alpha matting
+            output_data = remove(
+                input_data,
+                session=session,
+                alpha_matting=True,
+                alpha_matting_foreground_threshold=240,
+                alpha_matting_background_threshold=10,
+                alpha_matting_erode_size=10
+            )
             foreground = Image.open(io.BytesIO(output_data)).convert('RGBA')
 
         # Load and resize background to match foreground dimensions
         background = Image.open(background_path).convert('RGBA')
         background = background.resize(foreground.size, Image.Resampling.LANCZOS)
 
-        # Composite images
-        composite = Image.alpha_composite(background, foreground)
+        # Create a new blank image with white background
+        composite = Image.new('RGBA', foreground.size, (255, 255, 255, 255))
+        
+        # Paste background first
+        composite.paste(background, (0, 0))
+        
+        # Paste foreground with alpha channel
+        composite.paste(foreground, (0, 0), foreground)
 
         # Save output
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        output_path = os.path.join(OUTPUT_FOLDER, f'processed_{timestamp}.png')
+        output_filename = f'processed_{timestamp}.png'
+        output_path = os.path.join(OUTPUT_FOLDER, output_filename)
         composite.save(output_path, 'PNG')
+        
+        # Save a copy to static folder for immediate display
+        display_path = os.path.join('static', output_filename)
+        composite.save(display_path, 'PNG')
 
-        return output_path
+        return output_filename
 
     except Exception as e:
         logger.error(f"Error processing image: {str(e)}")
@@ -92,22 +115,30 @@ def upload_file():
         file.save(input_path)
 
         # Process image
-        output_path = process_image(input_path, DEFAULT_BACKGROUND)
+        output_filename = process_image(input_path, DEFAULT_BACKGROUND)
 
         # Clean up input file
         os.remove(input_path)
 
-        return jsonify({'success': True, 'output_path': output_path})
+        return jsonify({
+            'success': True, 
+            'output_path': f'static/{output_filename}',
+            'download_path': f'download/{output_filename}'
+        })
 
     except Exception as e:
         logger.error(f"Upload error: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
-@app.route('/download/<path:filename>')
+@app.route('/download/<filename>')
 def download_file(filename):
     """Handle download of processed image."""
     try:
-        return send_file(filename, as_attachment=True)
+        return send_file(
+            os.path.join(OUTPUT_FOLDER, filename),
+            as_attachment=True,
+            download_name=filename
+        )
     except Exception as e:
         logger.error(f"Download error: {str(e)}")
         return jsonify({'error': 'File not found'}), 404
