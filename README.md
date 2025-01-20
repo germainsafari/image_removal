@@ -29,6 +29,7 @@ cd portrait-background-replacer
 ```
 
 2. Create and activate a virtual environment:
+
 ```bash
 python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
@@ -36,12 +37,12 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 
 3. Install dependencies:
 ```bash
-pip install flask rembg pillow
+pip install requirements.txt
 ```
 
 4. Add your default background:
 - Place your desired background image in the `static` folder
-- Name it `default_background.jpg`
+- Name it `default_background.png`
 
 ## Usage
 
