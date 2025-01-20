@@ -1,0 +1,11 @@
+# .gitignore
+
+# Virtual Environment
+venv/
+env/
+.env/
+.venv/
+
+# Python
+__pycache__/
+*.pyc

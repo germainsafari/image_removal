@@ -1,4 +1,5 @@
 import os
+from dotenv import load_dotenv
 from flask import Flask, request, render_template, send_file, jsonify
 from PIL import Image
 import io
@@ -6,6 +7,9 @@ import requests
 import logging
 from datetime import datetime
 from werkzeug.utils import secure_filename
+
+# Load environment variables
+load_dotenv()
 
 app = Flask(__name__)
 
@@ -18,8 +22,12 @@ UPLOAD_FOLDER = 'uploads'
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg'}
 DEFAULT_BACKGROUND = 'static/default_background.png'
 OUTPUT_FOLDER = 'outputs'
-REMOVE_BG_API_KEY = 'EX1r2czGVzxP8vqGti8bzjZS'
+REMOVE_BG_API_KEY = os.getenv('REMOVE_BG_API_KEY')
 REMOVE_BG_API_URL = 'https://api.remove.bg/v1.0/removebg'
+
+# Verify API key is available
+if not REMOVE_BG_API_KEY:
+    raise ValueError("Missing REMOVE_BG_API_KEY in environment variables")
 
 # Ensure required directories exist
 for folder in [UPLOAD_FOLDER, OUTPUT_FOLDER, 'static']:
@@ -32,15 +40,15 @@ def allowed_file(filename):
     """Check if the file extension is allowed."""
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
+# This is the function that interacts with the remove.bg API to remove the background of an image.
+
 def remove_background_api(image_path):
     """
     Remove background using remove.bg API
     
-    Args:
-        image_path (str): Path to input image
+    Args:image_path (str): Path to input image
         
-    Returns:
-        bytes: Processed image data with transparent background
+    Returns:bytes: Processed image data with transparent background
     """
     headers = {
         'X-Api-Key': REMOVE_BG_API_KEY,
@@ -63,6 +71,8 @@ def remove_background_api(image_path):
             return response.content
         else:
             raise Exception(f"Remove.bg API error: {response.status_code} - {response.text}")
+        
+#  This function processes an image by removing the background using the remove.bg API and then compositing it with a background image.
 
 def process_image(input_path, background_path):
     """
@@ -164,6 +174,11 @@ def download_file(filename):
     except Exception as e:
         logger.error(f"Download error: {str(e)}")
         return jsonify({'error': 'File not found'}), 404
-
+    
+"""
+ This conditional block checks whether the current Python 
+ file is being run directly as the main program or if it is being 
+ imported as a module into another script.
+"""
 if __name__ == '__main__':
     app.run(debug=True)
