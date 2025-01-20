@@ -3,8 +3,7 @@
 # Virtual Environment
 venv/
 env/
-.env/
-.venv/
+.env/.venv/
 
 # Python
 __pycache__/
