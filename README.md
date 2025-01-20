@@ -19,6 +19,7 @@ A web application that automatically removes the background from portrait images
 - rembg (background removal)
 - Pillow (image processing)
 - HTML5/CSS3/JavaScript (frontend)
+- Remove.bg API
 
 ## Installation
 
@@ -34,13 +35,18 @@ cd portrait-background-replacer
 python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 ```
+3. Add a `.env` file with the following variables:
 
-3. Install dependencies:
+```bash
+REMOVE_BG_API_KEY=your_api_key
+```
+
+4. Install dependencies:
 ```bash
 pip install requirements.txt
 ```
 
-4. Add your default background:
+5. Add your default background:
 - Place your desired background image in the `static` folder
 - Name it `default_background.png`
 
